@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rose's Task Planner</title>
+  <style>
+    :root {
+      --primary: #4F46E5;
+      --bg: #F8FAFC;
+      --card-bg: #FFFFFF;
+      --text: #1E293B;
+      --text-muted: #64748B;
+      --border: #E2E8F0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 2rem 1rem; max-width: 800px; margin: 0 auto; }
+    header { text-align: center; margin-bottom: 2rem; }
+    .progress-container { background: var(--card-bg); padding: 1rem; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 1.5rem; }
+    .progress-labels { display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-weight: 600; }
+    .progress-track { background: #E2E8F0; height: 10px; border-radius: 5px; overflow: hidden; }
+    .progress-fill { background: var(--primary); height: 100%; width: 0%; transition: width 0.3s ease; }
+    
+    .task-form { background: var(--card-bg); padding: 1.25rem; border-radius: 12px; border: 1px solid var(--border); display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .task-form input[type="text"] { flex: 2; min-width: 200px; padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px; font-size: 1rem; }
+    .task-form select { flex: 1; min-width: 140px; padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px; font-size: 1rem; }
+    .task-form button { background: var(--primary); color: white; border: none; padding: 0.75rem 1.25rem; border-radius: 8px; font-weight: 600; cursor: pointer; }
+    
+    .add-category-box { background: var(--card-bg); padding: 1rem; border-radius: 12px; border: 1px dashed var(--border); display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
+    .add-category-box input { flex: 1; padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.9rem; }
+    .add-category-box button { background: #10B981; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 600; cursor: pointer; }
+
+    .filters { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    .filter-btn { background: var(--card-bg); border: 1px solid var(--border); padding: 0.5rem 1rem; border-radius: 20px; font-size: 0.875rem; cursor: pointer; }
+    .filter-btn.active { background: var(--primary); color: white; }
+    
+    .task-list { display: flex; flex-direction: column; gap: 0.75rem; }
+    .task-item { background: var(--card-bg); padding: 1rem; border-radius: 10px; border: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .task-left { display: flex; align-items: center; gap: 0.75rem; }
+    .task-item.completed .task-text { text-decoration: line-through; color: var(--text-muted); }
+    .badge { font-size: 0.75rem; font-weight: 600; padding: 0.25rem 0.6rem; border-radius: 12px; text-transform: uppercase; background: #F3F4F6; color: #374151; }
+    .delete-btn { background: transparent; border: none; color: #EF4444; font-size: 1.2rem; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Rose's Sorted Checklist</h1>
+    <p>Organize Chores, School Work, and Bat Mitzvah Prep</p>
+  </header>
+
+  <div class="progress-container">
+    <div class="progress-labels">
+      <span>Progress</span>
+      <span id="progress-text">0 / 0 completed</span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill" id="progress-fill"></div>
+    </div>
+  </div>
+
+  <form class="task-form" id="task-form">
+    <input type="text" id="task-input" placeholder="Add a task..." required>
+    <select id="category-select"></select>
+    <button type="submit">Add Task</button>
+  </form>
+
+  <div class="add-category-box">
+    <input type="text" id="new-category-input" placeholder="New label name (e.g. Soccer, Art)...">
+    <button type="button" id="add-cat-btn">+ Add Label</button>
+  </div>
+
+  <div class="filters" id="filters-container"></div>
+  <div class="task-list" id="task-list"></div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+    // Your exact Firebase configuration keys:
+    const firebaseConfig = {
+      apiKey: "AiZaSyCm02xNtagI0bRk1HPKYhnYvr09_gE6ViI",
+      authDomain: "rose-list.firebaseapp.com",
+      databaseURL: "https://rose-list-default-rtdb.firebaseio.com",
+      projectId: "rose-list",
+      storageBucket: "rose-list.firebasestorage.app",
+      messagingSenderId: "201336810240",
+      appId: "1:201336810240:web:ee627d1a4e6530dbe221e5",
+      measurementId: "G-GX8T9B8FDF"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const defaultCategories = [
+      { id: "batmitzvah", name: "Bat Mitzvah", color: "#7C3AED", bg: "#F5F3FF" },
+      { id: "school", name: "School Work", color: "#2563EB", bg: "#EFF6FF" },
+      { id: "chores", name: "Chores", color: "#059669", bg: "#ECFDF5" }
+    ];
+
+    let categories = defaultCategories;
+    let tasks = [];
+    let currentFilter = 'all';
+
+    const form = document.getElementById('task-form');
+    const taskInput = document.getElementById('task-input');
+    const categorySelect = document.getElementById('category-select');
+    const taskList = document.getElementById('task-list');
+    const filtersContainer = document.getElementById('filters-container');
+    const addCatBtn = document.getElementById('add-cat-btn');
+
+    function saveToCloud() {
+      set(ref(db, 'plannerData'), {
+        tasks: tasks,
+        categories: categories
+      });
+    }
+
+    onValue(ref(db, 'plannerData'), (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        tasks = data.tasks || [];
+        categories = data.categories || defaultCategories;
+      } else {
+        tasks = [
+          { id: 1, text: "Practice haftarah blessings", category: "batmitzvah", completed: false },
+          { id: 2, text: "Finish math worksheet", category: "school", completed: false },
+          { id: 3, text: "Clean room and make bed", category: "chores", completed: false }
+        ];
+        saveToCloud();
+      }
+      render();
+    });
+
+    addCatBtn.addEventListener('click', () => {
+      const input = document.getElementById('new-category-input');
+      const name = input.value.trim();
+      if (!name) return;
+
+      const id = 'cat_' + Date.now();
+      const hue = Math.floor(Math.random() * 360);
+      const color = `hsl(${hue}, 70%, 40%)`;
+      const bg = `hsl(${hue}, 80%, 96%)`;
+
+      categories.push({ id, name, color, bg });
+      input.value = '';
+      saveToCloud();
+    });
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const text = taskInput.value.trim();
+      if (!text) return;
+      tasks.push({ id: Date.now(), text, category: categorySelect.value, completed: false });
+      taskInput.value = '';
+      saveToCloud();
+    });
+
+    window.toggleTask = (id) => {
+      tasks = tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t);
+      saveToCloud();
+    };
+
+    window.deleteTask = (id) => {
+      tasks = tasks.filter(t => t.id !== id);
+      saveToCloud();
+    };
+
+    window.setFilter = (catId) => {
+      currentFilter = catId;
+      render();
+    };
+
+    function render() {
+      categorySelect.innerHTML = categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+
+      filtersContainer.innerHTML = `
+        <button class="filter-btn ${currentFilter === 'all' ? 'active' : ''}" onclick="setFilter('all')">All</button>
+      ` + categories.map(c => `
+        <button class="filter-btn ${currentFilter === c.id ? 'active' : ''}" onclick="setFilter('${c.id}')">${c.name}</button>
+      `).join('');
+
+      const total = tasks.length;
+      const completed = tasks.filter(t => t.completed).length;
+      const pct = total === 0 ? 0 : Math.round((completed / total) * 100);
+      document.getElementById('progress-text').innerText = `${completed} / ${total} completed (${pct}%)`;
+      document.getElementById('progress-fill').style.width = `${pct}%`;
+
+      const filtered = tasks.filter(t => currentFilter === 'all' || t.category === currentFilter);
+      taskList.innerHTML = filtered.map(t => {
+        const cat = categories.find(c => c.id === t.category) || { name: 'General', color: '#374151', bg: '#F3F4F6' };
+        return `
+          <div class="task-item ${t.completed ? 'completed' : ''}">
+            <div class="task-left">
+              <input type="checkbox" ${t.completed ? 'checked' : ''} onchange="toggleTask(${t.id})">
+              <span class="task-text">${t.text}</span>
+            </div>
+            <span class="badge" style="color: ${cat.color}; background-color: ${cat.bg}">${cat.name}</span>
+            <button class="delete-btn" onclick="deleteTask(${t.id})">&times;</button>
+          </div>
+        `;
+      }).join('');
+    }
+  </script>
+</body>
+</html>
